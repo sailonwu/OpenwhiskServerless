@@ -335,7 +335,7 @@ k8s-worker-1   Ready    <none>   4h14m   v1.19.3
         
         EOF
         kubectl apply -f grafana.yml
-.
+   
         部署svc
         
         cat >grafana_svc.yml<<"EOF"
