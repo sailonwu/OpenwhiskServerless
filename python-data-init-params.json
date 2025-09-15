@@ -1,0 +1,8 @@
+{
+    "value": {
+        "name": "yoloTest",
+        "main": "main",
+        "binary": false,
+        "code": "def main(args):\n\timport json\n\tfrom ultralytics import YOLO\n\tsource = args.get('url', None)\n\tmodel = YOLO('/models/yolov8n.pt')\n\tresults = model(source)\n\treturn {'result': str([json.loads(r.to_json()) for r in results])}"
+    }
+}

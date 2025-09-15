@@ -1,0 +1,103 @@
+[DEBUG] 当前就绪副本数: 5
+
+[DEBUG] 开始获取Pod指标...
+
+[INFO] Pod资源使用摘要:
+
+[DEBUG] 所有Pod的标签:
+Pod: owdev-alarmprovider-66dc8b575c-66dtq
+Pod: owdev-apigateway-6576446fc9-7lvcw
+Pod: owdev-controller-0
+Pod: owdev-couchdb-5564b48666-8fnp5
+Pod: owdev-invoker-0
+Pod: owdev-invoker-1
+Pod: owdev-invoker-2
+Pod: owdev-invoker-3
+Pod: owdev-invoker-4
+Pod: owdev-kafka-0
+Pod: owdev-kafkaprovider-765648c64b-tjdsl
+Pod: owdev-nginx-95bc5fb88-vqd76
+Pod: owdev-redis-7cf47d77d6-mjndl
+Pod: owdev-wskadmin
+Pod: owdev-zookeeper-0
+Pod: wskowdev-invoker-00-146041-prewarm-python3
+Pod: wskowdev-invoker-00-146042-prewarm-nodejs14
+Pod: wskowdev-invoker-00-241-prewarm-python3
+Pod: wskowdev-invoker-00-242-prewarm-nodejs14
+Pod: wskowdev-invoker-12-16-prewarm-nodejs14
+Pod: wskowdev-invoker-24-11-prewarm-python3
+Pod: wskowdev-invoker-24-12-prewarm-nodejs14
+Pod: wskowdev-invoker-31-2-prewarm-python3
+Pod: wskowdev-invoker-31-3-prewarm-nodejs14
+Pod: wskowdev-invoker-31-4-whisksystem-invokerhealthtestaction0
+Pod: wskowdev-invoker-31-5-whisksystem-invokerhealthtestaction0
+Pod: wskowdev-invoker-43-3-prewarm-nodejs14
+Pod: wskowdev-invoker-43-5-whisksystem-invokerhealthtestaction0
+Pod: wskowdev-invoker-43-6-whisksystem-invokerhealthtestaction0
+
+[INFO] 找到 5 个匹配标签 name=owdev-invoker 的Pod
+筛选目标 my_pods [{'cpu': '36660577n', 'memory': '347140Ki'}, {'cpu': '55983109n', 'memory': '206736Ki'}, {'cpu': '42027240n', 'memory': '209936Ki'}, {'cpu': '57891001n', 'memory': '211860Ki'}, {'cpu': '92844207n', 'memory': '205112Ki'}]
+
+[DEBUG] 原始指标响应结构:
+
+[INFO] Pod资源使用摘要:
+ - Pod: owdev-alarmprovider-66dc8b575c-66dtq
+   CPU: 75166n, 内存: 64560Ki
+ - Pod: owdev-apigateway-6576446fc9-7lvcw
+   CPU: 196851n, 内存: 54500Ki
+ - Pod: owdev-controller-0
+   CPU: 49154884n, 内存: 190532Ki
+ - Pod: owdev-couchdb-5564b48666-8fnp5
+   CPU: 5936874n, 内存: 89964Ki
+ - Pod: owdev-invoker-0
+   CPU: 36660577n, 内存: 347140Ki
+ - Pod: owdev-invoker-1
+   CPU: 55983109n, 内存: 206736Ki
+ - Pod: owdev-invoker-2
+   CPU: 42027240n, 内存: 209936Ki
+ - Pod: owdev-invoker-3
+   CPU: 57891001n, 内存: 211860Ki
+ - Pod: owdev-invoker-4
+   CPU: 92844207n, 内存: 205112Ki
+ - Pod: owdev-kafka-0
+   CPU: 143713518n, 内存: 779176Ki
+ - Pod: owdev-kafkaprovider-765648c64b-tjdsl
+   CPU: 28261n, 内存: 49484Ki
+ - Pod: owdev-nginx-95bc5fb88-vqd76
+   CPU: 27731n, 内存: 15856Ki
+ - Pod: owdev-redis-7cf47d77d6-mjndl
+   CPU: 865072n, 内存: 8768Ki
+ - Pod: owdev-wskadmin
+   CPU: 34621n, 内存: 3652Ki
+ - Pod: owdev-zookeeper-0
+   CPU: 2590830n, 内存: 118948Ki
+ - Pod: wskowdev-invoker-00-146041-prewarm-python3
+   CPU: 17034n, 内存: 1072Ki
+ - Pod: wskowdev-invoker-00-146042-prewarm-nodejs14
+   CPU: 77246n, 内存: 8692Ki
+ - Pod: wskowdev-invoker-00-241-prewarm-python3
+   CPU: 16226n, 内存: 2276Ki
+ - Pod: wskowdev-invoker-00-242-prewarm-nodejs14
+   CPU: 76239n, 内存: 12480Ki
+ - Pod: wskowdev-invoker-12-16-prewarm-nodejs14
+   CPU: 2139316n, 内存: 7984Ki
+ - Pod: wskowdev-invoker-24-11-prewarm-python3
+   CPU: 26033n, 内存: 1128Ki
+ - Pod: wskowdev-invoker-24-12-prewarm-nodejs14
+   CPU: 511279n, 内存: 8436Ki
+ - Pod: wskowdev-invoker-31-2-prewarm-python3
+   CPU: 12122n, 内存: 1092Ki
+ - Pod: wskowdev-invoker-31-3-prewarm-nodejs14
+   CPU: 91123n, 内存: 8372Ki
+ - Pod: wskowdev-invoker-31-4-whisksystem-invokerhealthtestaction0
+   CPU: 123258n, 内存: 8756Ki
+ - Pod: wskowdev-invoker-31-5-whisksystem-invokerhealthtestaction0
+   CPU: 99078n, 内存: 8740Ki
+ - Pod: wskowdev-invoker-43-3-prewarm-nodejs14
+   CPU: 2953078n, 内存: 8000Ki
+ - Pod: wskowdev-invoker-43-5-whisksystem-invokerhealthtestaction0
+   CPU: 1718125n, 内存: 8352Ki
+ - Pod: wskowdev-invoker-43-6-whisksystem-invokerhealthtestaction0
+   CPU: 1862960n, 内存: 8420Ki
+
+[INFO] 扩缩容成功! 新副本数: 6

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: example-pod
+  namespace: openwhisk
+spec:
+  serviceAccountName: testowdev-invoker
+  containers:
+  - name: nginx
+    image: nginx
+

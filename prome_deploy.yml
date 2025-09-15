@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: prometheus-work
+  labels:
+    app: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      securityContext:                                   #指定运行的用户为root
+        runAsUser: 0
+      serviceAccountName: prometheus
+      containers:
+      - image: prom/prometheus:v2.30.2
+        name: prometheus
+        args:
+        - "--config.file=/etc/prometheus/prometheus.yml" #通过volume挂载prometheus.yml
+        - "--storage.tsdb.path=/prometheus"              #通过vlolume挂载目录/prometheus
+        - "--storage.tsdb.retention.time=24h"
+        - "--web.enable-admin-api"                       #控制对admin HTTP API的访问
+        - "--web.enable-lifecycle"                       #支持热更新，直接执行localhost:9090/-/reload立即生效
+        ports:
+        - containerPort: 9090
+          name: http
+        volumeMounts:
+        - mountPath: "/etc/prometheus"
+          name: config-volume
+        - mountPath: "/prometheus"
+          name: data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 1Gi
+          limits:
+            cpu: 100m
+            memory: 2Gi
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: prometheus-data  #本地存储
+      - name: config-volume
+        configMap:
+          name: prometheus-config     #定义的prometeus.yaml
+

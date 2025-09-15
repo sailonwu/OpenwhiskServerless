@@ -1,728 +1,470 @@
-# OpenwhiskServerless
-1. 在 Kubernetes 环境下部署 OpenWhisk 服务
-   1> 搭建 Kubernetes 集群
-   2> 安装 Docker
-   3> 安装 Kubernetes 组件
-kubectl get nodes
-NAME           STATUS   ROLES    AGE     VERSION
-k8s-master     Ready    master   4h15m   v1.19.3
-k8s-worker-1   Ready    <none>   4h14m   v1.19.3
+<!--
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+-->
 
-2. 搭建 OpenWhisk 服务
-  1>. 安装 Helm
-   2> 配置 Dynamic Storage Provisioning
-   3> 部署 OpenWhisk
-   4>. 测试
-   在 Master 节点上，我们测试函数的创建与调用。
-    
-    新建文件hello.js, 内容如下：
-    
-    function main(params) {
-    var name;
-    if(params.name == undefined)
-        name = 'World';
-    else
-        name = params.name;
-     return {
-         payload:'Hello, ' + name + '!'};
-    }
-    执行以下命令，创建函数。我们创建了一个名为hellojs的函数。
-    
-    wsk action create -i hellojs hello.js
-    执行以下命令，调用函数。
-    
-    wsk action invoke -i hellojs --result --param name Zinuo
-3. k8s部署Prometheus+Grafana
-           部署Prometheus
-        创建命名空间
-        
-        操作节点[master1]
-        
-        kubectl create namespace prometheus-work
-        1.
-        部署Prometheus deploy
-        
-        操作节点[master1]
-        
-        cat >prome_deploy.yml<< "EOF"
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: prometheus
-          namespace: prometheus-work
-          labels:
-            app: prometheus
-        spec:
-          selector:
-            matchLabels:
-              app: prometheus
-          template:
-            metadata:
-              labels:
-                app: prometheus
-            spec:
-              securityContext:                                   #指定运行的用户为root
-                runAsUser: 0
-              serviceAccountName: prometheus
-              containers:
-              - image: prom/prometheus:v2.30.2
-                name: prometheus
-                args:
-                - "--config.file=/etc/prometheus/prometheus.yml" #通过volume挂载prometheus.yml
-                - "--storage.tsdb.path=/prometheus"              #通过vlolume挂载目录/prometheus
-                - "--storage.tsdb.retention.time=24h"
-                - "--web.enable-admin-api"                       #控制对admin HTTP API的访问
-                - "--web.enable-lifecycle"                       #支持热更新，直接执行localhost:9090/-/reload立即生效
-                ports:
-                - containerPort: 9090
-                  name: http
-                volumeMounts:
-                - mountPath: "/etc/prometheus"
-                  name: config-volume
-                - mountPath: "/prometheus"
-                  name: data
-                resources:
-                  requests:
-                    cpu: 100m
-                    memory: 512Mi
-                  limits:
-                    cpu: 100m
-                    memory: 512Mi
-              volumes:
-              - name: data
-                persistentVolumeClaim:
-                  claimName: prometheus-data  #本地存储
-              - name: config-volume
-                configMap:
-                  name: prometheus-config     #定义的prometeus.yaml
-        
-        EOF
-        kubectl apply -f prome_deploy.yml
-        
-        部署Prometheus service
-        
-        操作节点[master1]
-        
-        cat> prome_svc.yml<< "EOF"
-        apiVersion: v1
-        kind: Service
-        metadata:
-          name: prometheus
-          namespace: prometheus-work
-          labels:
-            app: prometheus
-        spec:
-          selector:
-            app: prometheus
-          type: NodePort
-          ports:
-            - name: web
-              port: 9090
-              targetPort: http
-        EOF
-        kubectl apply -f prome_svc.yml
-        
-        部署configmap
-        
-        操作节点[master1]
-        
-        cat > prome_cfg.yml << "EOF"
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: prometheus-config
-          namespace: prometheus-work
-        data:
-          prometheus.yml: |
-            global:
-              scrape_interval: 15s
-              scrape_timeout: 15s
-            scrape_configs:
-            - job_name: 'prometheus'
-              static_configs:
-              - targets: ['localhost:9090']
-        
-        EOF
-         kubectl apply -f prome_cfg.yml
-        
-        部署PV，PVC
-        
-        操作节点[node01]
-        
-        #在node01节点上执行
-        mkdir /data/k8s/prometheus -p
-        1.
-        2.
-        操作节点[master1]
-        
-        cat > prome_pvc.yml << "EOF"
-        apiVersion: v1
-        kind: PersistentVolume
-        metadata:
-          name: prometheus-local
-          labels:
-            app: prometheus
-        spec:
-          accessModes:
-          - ReadWriteOnce
-          capacity:
-            storage: 5Gi
-          storageClassName: local-storage
-          local:
-            path: /data/k8s/prometheus  #在node01节点创建此目录
-          nodeAffinity:
-            required:
-              nodeSelectorTerms:
-              - matchExpressions:
-                - key: kubernetes.io/hostname
-                  operator: In
-                  values:
-                  - node01   #指定运行在node节点
-          persistentVolumeReclaimPolicy: Retain
-        ---
-        apiVersion: v1
-        kind: PersistentVolumeClaim
-        metadata:
-          name: prometheus-data
-          namespace: prometheus-work
-        spec:
-          selector:
-            matchLabels:
-              app: prometheus
-          accessModes:
-          - ReadWriteOnce
-          resources:
-            requests:
-              storage: 5Gi
-          storageClassName: local-storage
-        
-        EOF
-        kubectl apply -f prome_pvc.yml
-        
-        配置rabc
-        
-        操作节点[master1]
-        
-        cat > prome_rabc.yml << "EOF"
-        apiVersion: v1
-        kind: ServiceAccount
-        metadata:
-          name: prometheus
-          namespace: prometheus-work
-        ---
-        apiVersion: /v1
-        kind: ClusterRole        #创建一个clusterrole
-        metadata:
-          name: prometheus
-        rules:
-        - apiGroups:
-          - ""
-          resources:
-          - nodes
-          - services
-          - endpoints
-          - pods
-          - nodes/proxy
-          verbs:
-          - get
-          - list
-          - watch
-        - apiGroups:
-          - "extensions"
-          resources:
-            - ingresses
-          verbs:
-          - get
-          - list
-          - watch
-        - apiGroups:
-          - ""
-          resources:
-          - configmaps
-          - nodes/metrics
-          verbs:
-          - get
-        - nonResourceURLs:
-          - /metrics
-          verbs:
-          - get
-        ---
-        apiVersion: /v1
-        kind: ClusterRoleBinding
-        metadata:
-          name: prometheus
-        roleRef:
-          apiGroup: 
-          kind: ClusterRole
-          name: prometheus
-        subjects:
-        - kind: ServiceAccount
-          name: prometheus
-          namespace: prometheus-work
-        
-        EOF
-        kubectl apply -f prome_rabc.yml
-        
-        查看部署的Prometheus服务
-        
-        操作节点[master1]
-        
-        [root@master1 ~]# kubectl get pod,svc,configmap,sa -n prometheus-work
-        NAME                             READY   STATUS    RESTARTS   AGE
-        pod/prometheus-db4b5c549-6gb7d   1/1     Running   0          4m39s
-        
-        NAME                 TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
-        service/prometheus   NodePort   10.103.99.200   <none>        9090:30512/TCP   15m    #注意这个30512是后面要访问的端口
-        
-        NAME                          DATA   AGE
-        configmap/kube-root-ca.crt    1      17m
-        configmap/prometheus-config   1      14m
-        
-        NAME                        SECRETS   AGE
-        serviceaccount/default      0         17m
-        serviceaccount/prometheus   0         12m
-        
-        在浏览器访问Prometheus 访问地址是node节点IP加上service的nodeport端口
-        192.168.48.104:30512
-        部署grafana
-        部署deployment
-        
-        cat >grafana.yml <<"EOF"
-        kind: Deployment
-        apiVersion: apps/v1
-        metadata:
-          labels:
-            app: grafana
-          name: grafana
-          namespace: prometheus-work
-        spec:
-          replicas: 1
-          revisionHistoryLimit: 10
-          selector:
-            matchLabels:
-              app: grafana
-          template:
-            metadata:
-              labels:
-                app: grafana
-            spec:
-              securityContext:
-                runAsNonRoot: true
-                runAsUser: 10555
-                fsGroup: 10555
-              containers:
-                - name: grafana
-                  image: grafana/grafana:8.4.4
-                  imagePullPolicy: IfNotPresent
-                  env:
-                    - name: GF_AUTH_BASIC_ENABLED
-                      value: "true"
-                    - name: GF_AUTH_ANONYMOUS_ENABLED
-                      value: "false"
-                  readinessProbe:
-                    httpGet:
-                      path: /login
-                      port: 3000
-                  volumeMounts:
-                    - mountPath: /var/lib/grafana
-                      name: grafana-data-volume
-                  ports:
-                    - containerPort: 3000
-                      protocol: TCP
-              volumes:
-                - name: grafana-data-volume
-                  emptyDir: {}
-        
-        EOF
-        kubectl apply -f grafana.yml
-   
-        部署svc
-        
-        cat >grafana_svc.yml<<"EOF"
-        kind: Service
-        apiVersion: v1
-        metadata:
-          labels:
-            app: grafana
-          name: grafana-service
-          namespace: prometheus-work
-        spec:
-          ports:
-            - port: 3000
-              targetPort: 3000
-          selector:
-            app: grafana
-          type: NodePort
-        
-        EOF
-        kubectl apply -f grafana_svc.yml
-  
-        查看服务
-        
-        [root@master1 ~]# kubectl get pod,svc -n prometheus-work |grep grafana
-        pod/grafana-5d475d9d7-ctb2t      1/1     Running   0          5m18s
-        service/grafana-service   NodePort   10.99.157.212   <none>        3000:31163/TCP   5m12s
-        #查看grafana的pod在哪个节点
-        [root@master1 1]# kubectl describe pod -n prometheus-work grafana-5d475d9d7-ctb2t | grep Node:
-        Node:             node02/192.168.48.105
-        [root@master1 1]#
-        
-        访问页面 http://XXX:31163
+# OpenWhisk Deployment on Kubernetes
 
-4.Kubernetes核心指标监控——Metrics Server
-  1> 下载并部署Metrics Server
-  wget https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.6.2/components.yaml
-  2> 验证Metrics Server组件部署成功
-  [root@master1 metrics-server]# kubectl api-versions|grep metrics
-    metrics.k8s.io/v1beta1
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0)
+[![Build Status](https://travis-ci.com/apache/openwhisk-deploy-kube.svg?branch=master)](https://travis-ci.com/github/apache/openwhisk-deploy-kube)
+[![Join Slack](https://img.shields.io/badge/join-slack-9B69A0.svg)](http://slack.openwhisk.org/)
 
-    [root@master1 ~]# kubectl get pods -n=kube-system |grep metrics
-    metrics-server-855cc6b9d-g6xsf  1/1   Running  0     18h
+Apache OpenWhisk is an open source, distributed Serverless platform
+that executes functions (fx) in response to events at any scale.  The
+OpenWhisk platform supports a programming model in which developers
+write functional logic (called Actions), in any supported programming
+language, that can be dynamically scheduled and run in response to
+associated events (via Triggers) from external sources (Feeds) or from
+HTTP requests.
 
-    [root@master1 ~]# kubectl top nodes
-    NAME      CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%  
-    master1   272m         3%     4272Mi          29%      
-    node1     384m         5%     9265Mi          30%      
-    node2     421m         5%     14476Mi         48%  
-5. Configure Default CPU Requests and Limits for a Namespace
-    Define a default CPU resource limits for a namespace, so that every new Pod in that namespace has a CPU resource limit configured.
-    This page shows how to configure default CPU requests and limits for a namespace.
-    
-    A Kubernetes cluster can be divided into namespaces. If you create a Pod within a namespace that has a default CPU limit, and any container in that Pod does not specify its own CPU limit, then the control plane assigns the default CPU limit to that container.
+This repository supports deploying OpenWhisk to Kubernetes and OpenShift.
+It contains a Helm chart that can be used to deploy the core
+OpenWhisk platform and optionally some of its Event Providers
+to both single-node and multi-node Kubernetes and OpenShift clusters.
 
-    kubectl create namespace default-cpu-example
-   apiVersion: v1
-    kind: LimitRange
-    metadata:
-      name: cpu-limit-range
-    spec:
-      limits:
-      - default:
-          cpu: 1
-        defaultRequest:
-          cpu: 0.5
-        type: Container
+# Table of Contents
 
-   kubectl apply -f https://k8s.io/examples/admin/resource/cpu-defaults.yaml --namespace=default-cpu-example
+* [Prerequisites: Kubernetes and Helm](#prerequisites-kubernetes-and-helm)
+* [Deploying OpenWhisk](#deploying-openwhisk)
+* [Administering OpenWhisk](#administering-openwhisk)
+* [Development and Testing OpenWhisk on Kubernetes](#development-and-testing-openwhisk-on-kubernetes)
+* [Cleanup](#cleanup)
+* [Issues](#issues)
 
+# Prerequisites: Kubernetes and Helm
 
-   apiVersion: v1
-    kind: Pod
-    metadata:
-      name: default-cpu-demo
-    spec:
-      containers:
-      - name: default-cpu-demo-ctr
-        image: nginx
-        
-  kubectl apply -f https://k8s.io/examples/admin/resource/cpu-defaults-pod.yaml --namespace=default-cpu-example
-  
-  kubectl get pod default-cpu-demo --output=yaml --namespace=default-cpu-example
+[Kubernetes](https://kubernetes.io/) is a container orchestration
+platform that automates the deployment, scaling, and management of
+containerized applications. [Helm](https://helm.sh/) is a package
+manager for Kubernetes that simplifies the management of Kubernetes
+applications. You do not need to have detailed knowledge of either Kubernetes or
+Helm to use this project, but you may find it useful to review their
+basic documentation to become familiar with their key concepts and terminology.
 
-  6.Kubernetes 中部署 NFS Provisioner 为 NFS 提供动态分配卷
-          # 清理rbac授权
-        kubectl delete -f nfs-rbac.yaml -n kube-system
-        
-        # 编写yaml
-        cat >nfs-rbac.yaml<<-EOF
-        ---
-        kind: ServiceAccount
-        apiVersion: v1
-        metadata:
-          name: nfs-client-provisioner
-        ---
-        kind: ClusterRole
-        apiVersion: rbac.authorization.k8s.io/v1
-        metadata:
-          name: nfs-client-provisioner-runner
-        rules:
-          - apiGroups: [""]
-            resources: ["persistentvolumes"]
-            verbs: ["get", "list", "watch", "create", "delete"]
-          - apiGroups: [""]
-            resources: ["persistentvolumeclaims"]
-            verbs: ["get", "list", "watch", "update"]
-          - apiGroups: ["storage.k8s.io"]
-            resources: ["storageclasses"]
-            verbs: ["get", "list", "watch"]
-          - apiGroups: [""]
-            resources: ["events"]
-            verbs: ["create", "update", "patch"]
-        ---
-        kind: ClusterRoleBinding
-        apiVersion: rbac.authorization.k8s.io/v1
-        metadata:
-          name: run-nfs-client-provisioner
-        subjects:
-          - kind: ServiceAccount
-            name: nfs-client-provisioner
-            namespace: kube-system
-        roleRef:
-          kind: ClusterRole
-          name: nfs-client-provisioner-runner
-          apiGroup: rbac.authorization.k8s.io
-        ---
-        kind: Role
-        apiVersion: rbac.authorization.k8s.io/v1
-        metadata:
-          name: leader-locking-nfs-client-provisioner
-        rules:
-          - apiGroups: [""]
-            resources: ["endpoints"]
-            verbs: ["get", "list", "watch", "create", "update", "patch"]
-        ---
-        kind: RoleBinding
-        apiVersion: rbac.authorization.k8s.io/v1
-        metadata:
-          name: leader-locking-nfs-client-provisioner
-        subjects:
-          - kind: ServiceAccount
-            name: nfs-client-provisioner
-            # replace with namespace where provisioner is deployed
-            namespace: kube-system
-        roleRef:
-          kind: Role
-          name: leader-locking-nfs-client-provisioner
-          apiGroup: rbac.authorization.k8s.io
-        EOF
-        
-        # 应用授权
-        kubectl apply -f nfs-rbac.yaml -n kube-system
+## Kubernetes
 
+Your first step is to create a Kubernetes cluster that is capable of
+supporting an OpenWhisk deployment. Although there are some [technical
+requirements](docs/k8s-technical-requirements.md) that the Kubernetes
+cluster must satisfy, any of the options described below is
+acceptable.
 
-        git clone https://github.com/kubernetes-incubator/external-storage.git
-        cp -R external-storage/nfs-client/deploy/ /root/
-        cd deploy
+### Simple Docker-based options
 
-        # 清理NFS Provisioner资源
-        kubectl delete -f nfs-provisioner-deploy.yaml -n kube-system
-        
-        export NFS_ADDRESS='10.198.1.155'
-        export NFS_DIR='/data/nfs'
-        
-        # 编写deployment.yaml
-        cat >nfs-provisioner-deploy.yaml<<-EOF
-        ---
-        kind: Deployment
-        apiVersion: apps/v1
-        metadata:
-          name: nfs-client-provisioner
-        spec:
-          replicas: 1
-          selector:
-            matchLabels:
-              app: nfs-client-provisioner
-          strategy:
-            type: Recreate  #---设置升级策略为删除再创建(默认为滚动更新)
-          template:
-            metadata:
-              labels:
-                app: nfs-client-provisioner
-            spec:
-              serviceAccountName: nfs-client-provisioner
-              containers:
-                - name: nfs-client-provisioner
-                  #---由于quay.io仓库国内被墙，所以替换成七牛云的仓库
-                  #image: quay-mirror.qiniu.com/external_storage/nfs-client-provisioner:latest
-                  image: registry.cn-hangzhou.aliyuncs.com/open-ali/nfs-client-provisioner:latest
-                  volumeMounts:
-                    - name: nfs-client-root
-                      mountPath: /persistentvolumes
-                  env:
-                    - name: PROVISIONER_NAME
-                      value: nfs-client  #---nfs-provisioner的名称，以后设置的storageclass要和这个保持一致
-                    - name: NFS_SERVER
-                      value: ${NFS_ADDRESS}  #---NFS服务器地址，和 valumes 保持一致
-                    - name: NFS_PATH
-                      value: ${NFS_DIR}  #---NFS服务器目录，和 valumes 保持一致
-              volumes:
-                - name: nfs-client-root
-                  nfs:
-                    server: ${NFS_ADDRESS}  #---NFS服务器地址
-                    path: ${NFS_DIR} #---NFS服务器目录
-        EOF
-        
-        # 部署deployment.yaml
-        kubectl apply -f nfs-provisioner-deploy.yaml -n kube-system
-        
-        # 查看创建的pod
-        kubectl get pod -o wide -n kube-system|grep nfs-client
-        
-        # 查看pod日志
-        kubectl logs -f `kubectl get pod -o wide -n kube-system|grep nfs-client|awk '{print $1}'` -n kube-system
-        # 清理storageclass资源
-        kubectl delete -f nfs-storage.yaml
-        
-        # 编写yaml
-        cat >nfs-storage.yaml<<-EOF
-        apiVersion: storage.k8s.io/v1
-        kind: StorageClass
-        metadata:
-          name: nfs-storage
-          annotations:
-            storageclass.kubernetes.io/is-default-class: "true"  #---设置为默认的storageclass
-        provisioner: nfs-client  #---动态卷分配者名称，必须和上面创建的"PROVISIONER_NAME"变量中设置的Name一致
-        parameters:
-          archiveOnDelete: "true"  #---设置为"false"时删除PVC不会保留数据,"true"则保留数据
-        mountOptions: 
-          - hard        #指定为硬挂载方式
-          - nfsvers=4   #指定NFS版本，这个需要根据 NFS Server 版本号设置
-        EOF
-        
-        #部署class.yaml
-        kubectl apply -f nfs-storage.yaml
-        
-        #查看创建的storageclass(这里可以看到nfs-storage已经变为默认的storageclass了)
-        $ kubectl get sc
-        NAME                    PROVISIONER      AGE
-        nfs-storage (default)   nfs-client       3m38s
-        
-         创建 PVC
-           # 删除命令空间
-           kubectl delete ns kube-public
-           
-           # 创建命名空间
-           kubectl create ns kube-public
-           
-           # 清理pvc
-           kubectl delete -f test-claim.yaml -n kube-public
-           
-           # 编写yaml
-           cat >test-claim.yaml<<\EOF
-           kind: PersistentVolumeClaim
-           apiVersion: v1
-           metadata:
-             name: test-claim
-           spec:
-             storageClassName: nfs-storage #---需要与上面创建的storageclass的名称一致
-             accessModes:
-               - ReadWriteMany
-             resources:
-               requests:
-                 storage: 100Gi
-           EOF
-           
-           #创建PVC
-           kubectl apply -f test-claim.yaml -n kube-public
-           
-           #查看创建的PV和PVC
-           $ kubectl get pvc -n kube-public
-           NAME         STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-           test-claim   Bound    pvc-593f241f-a75f-459a-af18-a672e5090921   100Gi      RWX            nfs-storage    3s
-           
-           kubectl get pv
-           
-           #然后，我们进入到NFS的export目录，可以看到对应该volume name的目录已经创建出来了。其中volume的名字是namespace，PVC name以及uuid的组合：
-           
-           #注意，出现pvc在pending的原因可能为nfs-client-provisioner pod 出现了问题，删除重建的时候会出现镜像问题
-         
-         创建测试 Pod
-           # 清理资源
-           kubectl delete -f test-pod.yaml -n kube-public
-           
-           # 编写yaml
-           cat > test-pod.yaml <<\EOF
-           kind: Pod
-           apiVersion: v1
-           metadata:
-             name: test-pod
-           spec:
-             containers:
-             - name: test-pod
-               image: busybox:latest
-               command:
-                 - "/bin/sh"
-               args:
-                 - "-c"
-                 - "touch /mnt/SUCCESS && exit 0 || exit 1"
-               volumeMounts:
-                 - name: nfs-pvc
-                   mountPath: "/mnt"
-             restartPolicy: "Never"
-             volumes:
-               - name: nfs-pvc
-                 persistentVolumeClaim:
-                   claimName: test-claim
-           EOF
-           
-           #创建pod
-           kubectl apply -f test-pod.yaml -n kube-public
-           
-           #查看创建的pod
-           kubectl get pod -o wide -n kube-public
+The simplest way to get a small Kubernetes cluster suitable for
+development and testing is to use one of the Docker-in-Docker
+approaches for running Kubernetes directly on top of Docker on your
+development machine.  Configuring Docker with 4GB of memory and
+2 virtual CPUs is sufficient for the default settings of OpenWhisk.
+Depending on your host operating system, we recommend the following:
+1. MacOS: Use the built-in Kubernetes support in Docker for Mac
+version 18.06 or later. Please follow our
+[setup instructions](docs/k8s-docker-for-mac.md) to initially create
+your cluster.
+2. Linux: Use [kind](https://github.com/kubernetes-sigs/kind).
+Please follow our [setup instructions](docs/k8s-kind.md)
+to initially create your cluster.
+3. Windows: Use the built-in Kubernetes support in Docker for Windows
+version 18.06 or later. Please follow our
+[setup instructions](docs/k8s-docker-for-windows.md) to initially create
+your cluster.
 
-7. 在 OpenWhisk 上部署 YOLO 以实现图片目标检测
-   1> 定制带有 YOLO 的 OpenWhisk Python runtime 容器
-   docker pull openwhisk/action-python-v3.11:latest
-   FROM openwhisk/action-python-v3.11:latest
-   # 安装 OpenCV 图形渲染所需的 OpenGL 库
-   RUN apt update && apt install -y libgl1-mesa-glx
-   # 此处安装 CPU 版的 PyTorch 为例
-   RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-   # 安装 YOLO 库
-   RUN pip install ultralytics
-   # 创建模型文件夹
-   RUN mkdir -p /models
-   # 将模型文件复制到容器中
-   COPY ./models/* /models/
+### Using a Kubernetes cluster from a cloud provider
 
-   docker build -t openwhisk-yolov8n-runtime:1.0.0 .
+You can also provision a Kubernetes cluster from a cloud provider,
+subject to the cluster meeting the [technical
+requirements](docs/k8s-technical-requirements.md). You will need at least
+1 worker node with 4GB of memory and 2 virtual CPUs to deploy the default
+configuration of OpenWhisk.  You can deploy to significantly larger clusters
+by scaling up the replica count of the various components and labeling multiple
+nodes as invoker nodes. We have
+detailed documentation on using Kubernetes clusters from the following
+major cloud providers:
+* [IBM (IKS)](docs/k8s-ibm-public.md)
+* [Google (GKE)](docs/k8s-google.md)
+* [Amazon (EKS)](docs/k8s-aws.md)
 
-   2> 测试定制 OpenWhisk Python runtime 容器
-   docker run -d -p 127.0.0.1:80:8080/tcp --name=bloom_whisker --rm -it openwhisk-yolov8n-runtime:1.0.0
+We would welcome contributions of documentation for Azure (AKS) and any other public cloud providers.
 
-   {
-    "value": {
-        "name": "yoloTest",
-        "main": "main",
-        "binary": false,
-           "code": "def main(args):\n\timport json\n\tfrom ultralytics import YOLO\n\tsource = args.get('url', None)\n\tmodel = YOLO('/models/yolov8n.pt')\n\tresults = model(source)\n\treturn {'result': str([json.loads(r.to_json()) for r in results])}"
-       }
-   }
+### Using OpenShift
 
-      def main(args):
-          import json
-      
-          from ultralytics import YOLO
-      
-          source = args.get("url", None)
-          model = YOLO("/models/yolov8n.pt")
-          results = model(source)
-          return {"result": str([json.loads(r.to_json()) for r in results])}
-      
-      
-          curl -d "@python-data-init-params.json" -H "Content-Type: application/json" http://localhost/init
-      
-         3> 将定制镜像推送到 Docker Hub
-        docker tag openwhisk-yolov8n-runtime:1.0.0 <DockerHubUser>/openwhisk-yolov8n-runtime:1.0.0
-      
-      # Example
-      docker tag openwhisk-yolov8n-runtime:1.0.0 liuzhaoze/openwhisk-yolov8n-runtime:1.0.0
-      docker push <DockerHubUser>/openwhisk-yolov8n-runtime:1.0.0
-      
-      # Example
-      docker push liuzhaoze/openwhisk-yolov8n-runtime:1.0.0
-      
-        4> 在 OpenWhisk 上配置定制 Python runtime 容器
-        cp runtimes.json runtimes.json.bak
-        cp runtimes-minimal-travis.json runtimes-minimal-travis.json.bak
-      
-      测试
-      def main(args):
-          import json
-      
-          from ultralytics import YOLO
-      
-          source = args.get("url", None)
-          model = YOLO("/models/yolov8n.pt")
-          results = model(source)
-          return {"result": str([json.loads(r.to_json()) for r in results])}
-        
-        zip -j -r yoloTest.zip yoloTest/
-      
-        sudo wsk -i action create yoloTest yoloTest.zip --kind python:3
-        sudo wsk -i action invoke --result yoloTest --param url "https://ultralytics.com/images/bus.jpg"
-      
-         
-      
-         
+You will need at least 1 worker node with 4GB of memory and 2 virtual
+CPUs to deploy the default configuration of OpenWhisk.  You can deploy
+to significantly larger clusters by scaling up the replica count of
+the various components and labeling multiple nodes as invoker nodes.
+For more detailed documentation, see:
+* [OpenShift 4](docs/openshift-4.md)
+
+### Using a Kubernetes cluster you built yourself
+
+If you are comfortable with building your own Kubernetes clusters and
+deploying services with ingresses to them, you should also
+be able to deploy OpenWhisk to a do-it-yourself cluster. Make sure
+your cluster meets the [technical requirements](docs/k8s-technical-requirements.md).
+You will need at least 1 worker node with 4GB of memory and 2 virtual CPUs to deploy
+the default configuration of OpenWhisk.  You can deploy to
+significantly larger clusters by scaling up the replica count of the
+various components and labeling multiple nodes as invoker nodes.
+
+Additional more detailed instructions:
+* [Some general comments](docs/k8s-diy.md).
+* [Using kubeadm on Ubuntu 18.04](docs/k8s-diy-ubuntu.md).
+
+## Helm
+
+[Helm](https://github.com/kubernetes/helm) is a tool to simplify the
+deployment and management of applications on Kubernetes clusters.
+The OpenWhisk Helm chart requires Helm 3.
+
+Our automated testing currently uses Helm v3.2.4
+
+Follow the Helm [install instructions](https://github.com/kubernetes/helm)
+for your platform to install Helm v3.0.1 or newer.
+
+# Deploying OpenWhisk
+
+Now that you have your Kubernetes cluster and have installed
+the Helm 3 CLI, you are ready to deploy OpenWhisk.
+
+## Overview
+
+You will use Helm to deploy OpenWhisk to your Kubernetes cluster.
+There are four deployment steps that are described in more
+detail below in the rest of this section.
+1. [Initial cluster setup](#initial-setup). If you have provisioned a
+multi-node cluster, you should label the worker nodes
+to indicate their intended usage by OpenWhisk.
+2. [Customize the deployment](#customize-the-deployment). You will
+create a `mycluster.yaml` that specifies key facts about your
+Kubernetes cluster and the OpenWhisk configuration you wish to
+deploy. Predefined `mycluster.yaml` files for common flavors
+of Kubernetes clusters are provided in the [deploy](./deploy)
+directory.
+3. [Deploy OpenWhisk with Helm](#deploy-with-helm). You will use Helm and
+`mycluster.yaml` to deploy OpenWhisk to your Kubernetes cluster.
+4. [Configure the `wsk` CLI](#configure-the-wsk-cli). You need to
+tell the `wsk` CLI how to connect to your OpenWhisk deployment.
+
+## Initial setup
+
+### Single Worker Node Clusters
+
+If your cluster has a single worker node, then you should
+configure OpenWhisk without node affinity. This is done by adding
+the following lines to your `mycluster.yaml`
+```
+affinity:
+  enabled: false
+
+toleration:
+  enabled: false
+
+invoker:
+  options: "-Dwhisk.kubernetes.user-pod-node-affinity.enabled=false"
+```
+
+### Multi Worker Node Clusters
+
+If you are deploying OpenWhisk to a cluster with multiple worker
+nodes, we recommend using node affinity to segregate the compute nodes
+used for the OpenWhisk control plane from those used to execute user
+functions. Do this by labeling each node with
+`openwhisk-role=invoker`. In the default configuration, which uses the
+KubernetesContainerFactory, the node labels are used in conjunction
+with Pod affinities to inform the Kubernetes scheduler how to place
+work so that user actions will not interfere with the OpenWhisk
+control plane.  When using the non-default DockerContainerFactory,
+OpenWhisk assumes it has exclusive use of these invoker nodes and will
+schedule work on them directly, completely bypassing the Kubernetes
+scheduler. For each node
+<INVOKER_NODE_NAME> you want to be an invoker, execute
+```shell
+kubectl label node <INVOKER_NODE_NAME> openwhisk-role=invoker
+```
+
+If you are targeting OpenShift, use the command
+```shell
+oc label node <INVOKER_NODE_NAME> openwhisk-role=invoker
+```
+
+For more precise control of the placement of the rest of OpenWhisk's
+pods on a multi-node cluster, you can optionally label additional
+non-invoker worker nodes. Use the label `openwhisk-role=core`
+to indicate nodes which should run the OpenWhisk control plane
+(the controller, kafka, zookeeeper, and couchdb pods).
+If you have dedicated Ingress nodes, label them with
+`openwhisk-role=edge`. Finally, if you want to run the OpenWhisk
+Event Providers on specific nodes, label those nodes with
+`openwhisk-role=provider`.
+
+If the Kubernetes cluster does not allow you to assign a label to a
+node, or you cannot use the affinity attribute, you use the yaml
+snippet shown above in the single worker node configuration to disable
+the use of affinities by OpenWhisk.
+
+## Customize the Deployment
+
+You will need a `mycluster.yaml` file to record key aspects of your
+Kubernetes cluster that are needed to configure the deployment of
+OpenWhisk to your cluster. For details, see the documentation
+appropriate to your Kubernetes cluster:
+* [Docker for Mac](docs/k8s-docker-for-mac.md#configuring-openwhisk)
+* [Docker for Windows](docs/k8s-docker-for-windows.md#configuring-openwhisk)
+* [kind](docs/k8s-kind.md#configuring-openwhisk)
+* [IBM Cloud Kubernetes Service (IKS)](docs/k8s-ibm-public.md#configuring-openwhisk)
+* [Google (GKE)](docs/k8s-google.md#configuring-openwhisk)
+* [Amazon (EKS)](docs/k8s-aws.md#configuring-openwhisk)
+* [OpenShift](docs/openshift-4.md##configuring-openwhisk)
+
+Default/template `mycluster.yaml` for various types of Kubernetes clusets
+can be found in subdirectories of [deploy](./deploy).
+
+Beyond the basic Kubernetes cluster specific configuration information,
+the `mycluster.yaml` file can also be used
+to customize your OpenWhisk deployment by enabling optional features
+and controlling the replication factor of the various microservices
+that make up the OpenWhisk implementation. See the [configuration
+choices documentation](./docs/configurationChoices.md) for a
+discussion of the primary options.
+
+## Deploy With Helm
+
+For simplicity, in this README, we have used `owdev` as the release name and
+`openwhisk` as the namespace into which the Chart's resources will be deployed.
+You can use a different name and/or namespace simply by changing the commands
+used below.
+
+**NOTE:** The commands below assume Helm v3.2.0 or higher. Verify your local Helm version with the command `helm version`.
+
+### Deploying Released Charts from Helm Repository
+
+The OpenWhisk project maintains a Helm repository at `https://openwhisk.apache.org/charts`.
+You may install officially released versions of OpenWhisk from this repository:
+
+```
+helm repo add openwhisk https://openwhisk.apache.org/charts
+helm repo update
+helm install owdev openwhisk/openwhisk -n openwhisk --create-namespace -f mycluster.yaml
+```
+
+### Deploying from Git
+
+To deploy directly from sources, either download the
+[latest source release](https://github.com/apache/openwhisk-deploy-kube/releases) or
+`git clone https://github.com/apache/openwhisk-deploy-kube.git` and use the Helm chart
+from the `helm/openwhisk` folder of the source tree.
+
+```shell
+helm install owdev ./helm/openwhisk -n openwhisk --create-namespace -f mycluster.yaml
+```
+
+### Checking status
+
+You can use the command `helm status owdev -n openwhisk` to get a summary
+of the various Kubernetes artifacts that make up your OpenWhisk
+deployment. Once the pod name containing the word `install-packages` is in the `Completed` state,
+your OpenWhisk deployment is ready to be used.
+
+**NOTE:** You can check the status of the pod by running the following command `kubectl get pods -n openwhisk --watch`.
+
+## Configure the wsk CLI
+
+Configure the OpenWhisk CLI, wsk, by setting the auth and apihost
+properties (if you don't already have the wsk cli, follow the
+instructions [here](https://github.com/apache/openwhisk-cli)
+to get it). Replace `whisk.ingress.apiHostName` and `whisk.ingress.apiHostPort`
+with the actual values from your `mycluster.yaml`.
+```shell
+wsk property set --apihost <whisk.ingress.apiHostName>:<whisk.ingress.apiHostPort>
+wsk property set --auth 23bc46b1-71f6-4ed5-8c54-816aa4f8c502:123zO3xZCLrMN6v2BKK1dXYFpXlPkccOFqm12CdAsMgRU4VrNZ9lyGVCGuMDGIwP
+```
+### Configuring the CLI for Kubernetes on Docker for Mac and Windows
+
+The `docker0` network interface does not exist in the Docker for Mac/Windows
+host environment. Instead, exposed NodePorts are forwarded from localhost
+to the appropriate containers.  This means that you will use `localhost`
+instead of `whisk.ingress.apiHostName` when configuring
+the `wsk` cli and replace `whisk.ingress.apiHostPort`
+with the actual values from your `mycluster.yaml`.
+
+```shell
+wsk property set --apihost localhost:<whisk.ingress.apiHostPort>
+wsk property set --auth 23bc46b1-71f6-4ed5-8c54-816aa4f8c502:123zO3xZCLrMN6v2BKK1dXYFpXlPkccOFqm12CdAsMgRU4VrNZ9lyGVCGuMDGIwP
+```
+
+## Verify your OpenWhisk Deployment
+
+Your OpenWhisk installation should now be usable.  You can test it by following
+[these instructions](https://github.com/apache/openwhisk/blob/master/docs/actions.md)
+to define and invoke a sample OpenWhisk action in your favorite programming language.
+
+You can also issue the command `helm test owdev -n openwhisk` to run the basic
+verification test suite included in the OpenWhisk Helm chart.
+
+Note: if you installed self-signed certificates, which is the default
+for the OpenWhisk Helm chart, you will need to use `wsk -i` to
+suppress certificate checking.  This works around `cannot validate
+certificate` errors from the `wsk` CLI.
+
+If your deployment is not working, check our
+[troubleshooting guide](./docs/troubleshooting.md) for ideas.
+
+## Scale-up your OpenWhisk Deployment
+
+Using defaults, your deployment is configured to provide a bare-minimum working platform for testing and exploration. For your specialized workloads, you can scale-up your openwhisk deployment by defining your deployment configurations in your `mycluster.yaml` which overrides the defaults in `helm/openwhisk/values.yaml`. Some important parameters to consider (for other parameters, check `helm/openwhisk/values.yaml` and [configurationChoices](./docs/configurationChoices.md)):
+* `actionsInvokesPerminute`: limits the maximum number of invocations per minute.
+* `actionsInvokesConcurrent`: limits the maximum concurrent invocations.
+* `containerPool`: total memory available per `invoker` instance. `Invoker` uses this memory to create containers for user-actions. The concurrency-limit (actions running in parallel) will depend upon the total memory configured for `containerPool` and memory allocated per action (`default:` 256mb per container).
+
+For more information about increasing concurrency-limit, check [scaling-up your deployment](./docs/k8s-custom-build-cluster-scaleup.md).
+
+# Administering OpenWhisk
+
+[Wskadmin](https://github.com/apache/openwhisk/tree/master/tools/admin) is the tool to perform various administrative operations against an OpenWhisk deployment.
+
+Since wskadmin requires credentials for direct access to the database (that is not normally accessible to the outside), it is deployed in a pod inside Kubernetes that is configured with the proper parameters. You can run `wskadmin` with `kubectl`. You need to use the `<namespace>` and the deployment `<name>` that you configured with `--namespace` and `--name` when deploying.
+
+You can then invoke `wskadmin` with:
+
+```
+kubectl -n <namespace> -ti exec <name>-wskadmin -- wskadmin <parameters>
+```
+
+For example, is your deployment name is `owdev` and the namespace is `openwhisk` you can list users in the `guest` namespace with:
+
+```
+$ kubectl -n openwhisk  -ti exec owdev-wskadmin -- wskadmin user list guest
+23bc46b1-71f6-4ed5-8c54-816aa4f8c502:123zO3xZCLrMN6v2BKK1dXYFpXlPkccOFqm12CdAsMgRU4VrNZ9lyGVCGuMDGIwP
+```
+
+Check [here](https://github.com/apache/openwhisk/tree/master/tools/admin) for details about the available commands.
+
+# Development and Testing OpenWhisk on Kubernetes
+
+This section outlines how common OpenWhisk development tasks are
+supported when OpenWhisk is deployed on Kubernetes using Helm.
+
+### Running OpenWhisk test cases
+
+Some key differences in a Kubernetes-based deployment of OpenWhisk are
+that deploying the system does not generate a `whisk.properties` file and
+that the various internal microservices (`invoker`, `controller`,
+etc.) are not directly accessible from the outside of the Kubernetes cluster.
+Therefore, although you can run full system tests against a
+Kubernetes-based deployment by giving some extra command line
+arguments, any unit tests that assume direct access to one of the internal
+microservices will fail.   First clone the [core OpenWhisk repository](https://github.com/apache/openwhisk)
+locally and set `$OPENWHISK_HOME` to its top-level directory. Then, the
+system tests can be executed in a
+batch-style as shown below, where WHISK_SERVER and WHISK_AUTH are
+replaced by the values returned by `wsk property get --apihost` and
+`wsk property get --auth` respectively.
+```shell
+cd $OPENWHISK_HOME
+./gradlew :tests:testSystemKCF -Dwhisk.auth=$WHISK_AUTH -Dwhisk.server=https://$WHISK_SERVER -Dopenwhisk.home=`pwd`
+```
+You can also launch the system tests as JUnit test from an IDE by
+adding the same system properties to the JVM command line used to
+launch the tests:
+```shell
+ -Dwhisk.auth=$WHISK_AUTH -Dwhisk.server=https://$WHISK_SERVER -Dopenwhisk.home=`pwd`
+```
+
+**NOTE:** You need to install JDK 8 in order to run these tests.
+
+### Deploying a locally built docker image.
+
+If you are using Kubernetes in Docker, it is
+straightforward to deploy local images by adding a stanza to your
+mycluster.yaml. For example, to use a locally built controller image,
+just add the stanza below to your `mycluster.yaml` to override the default
+behavior of pulling a stable `openwhisk/controller` image from Docker Hub.
+```yaml
+controller:
+  imageName: "whisk/controller"
+  imageTag: "latest"
+```
+
+### Selectively redeploying using a locally built docker image
+
+You can use the `helm upgrade` command to selectively redeploy one or
+more OpenWhisk components.  Continuing the example above, if you make
+additional changes to the controller source code and want to just
+redeploy it without redeploying the entire OpenWhisk system you can do
+the following:
+
+If you are using a multi-node Kubernetes cluster you will need to
+repeat the following steps on all nodes that may run the controller
+component.
+
+The first step is to rebuild the docker image:
+```shell
+# Execute this command in your openwhisk directory
+bin/wskdev controller -b
+```
+Note that the ```wskdev``` flags ```-x``` and ```-d``` are not compatible
+with the Kubernetes deployment of OpenWhisk.
+
+Alternatively, you can build all of the OpenWhisk docker components:
+```shell
+# Execute this command in your openwhisk directory
+./gradlew distDocker
+```
+
+After building the new docker image(s), tag the new image:
+```shell
+# Tag the docker image you seek to redeploy
+docker tag whisk/controller whisk/controller:v2
+```
+
+Then, edit your `mycluster.yaml` to contain:
+```yaml
+controller:
+  imageName: "whisk/controller"
+  imageTag: "v2"
+```
+Redeploy with Helm by executing this command in your
+openwhisk-deploy-kube directory:
+```shell
+helm upgrade owdev ./helm/openwhisk -n openwhisk -f mycluster.yaml
+```
+
+### Deploying Lean Openwhisk version.
+
+To have a lean setup (no Kafka, Zookeeper and no Invokers as separate entities):
+```yaml
+controller:
+  lean: true
+```
+
+# Cleanup
+
+Use the following command to remove all the deployed OpenWhisk components:
+```shell
+helm uninstall owdev -n openwhisk
+```
+By default, `helm uninstall` removes the history of previous deployments.
+If you want to keep the history, add the command line flag `--keep-history`.
+
+# Issues
+
+If your OpenWhisk deployment is not working, check our
+[troubleshooting guide](./docs/troubleshooting.md) for ideas.
+
+Report bugs, ask questions and request features [here on GitHub](../../issues).
+
+You can also join our slack channel and chat with developers. To get access to our slack channel, request an invite [here](http://slack.openwhisk.org).

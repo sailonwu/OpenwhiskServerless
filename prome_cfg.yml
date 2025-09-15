@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: prometheus-work
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      scrape_timeout: 15s
+    scrape_configs:
+    - job_name: 'prometheus'
+      static_configs:
+      - targets: ['localhost:9090']
+
+    - job_name: 'test'
+      static_configs:
+      - targets: ['192.168.80.134:9100']
+    
+    - job_name: 'coredns'#coredns监控项
+      static_configs:
+      - targets: ['10.96.0.10:9153']
+
+    - job_name: 'kube-apiserver'#添加kube-apiserver监控项
+      scheme: https
+      tls_config:
+        insecure_skip_verify: true
+        ca_file: '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
+      bearer_token_file: '/var/run/secrets/kubernetes.io/serviceaccount/token'
+      static_configs:
+      - targets: ['10.96.0.1:443']
+    - job_name: 'kube-state-metrics'
+      static_configs:
+      - targets: ['10.98.242.26:8080']
+
+    - job_name: 'cadvisor'
+      kubernetes_sd_configs:
+        - role: node
+      scheme: https
+      tls_config:
+        insecure_skip_verify: true
+        ca_file: '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
+      bearer_token_file: '/var/run/secrets/kubernetes.io/serviceaccount/token'
+      relabel_configs:
+      - target_label: __metrics_path__
+        replacement: /metrics/cadvisor
+
+
+    # 添加 owdev-controller 服务
+    - job_name: 'owdev-controller'
+      static_configs:
+        - targets: ['owdev-controller.openwhisk.svc.cluster.local:8080']
+
+    - job_name: 'owdev-apigateway1'
+      static_configs:
+      - targets: ['owdev-apigateway.openwhisk.svc.cluster.local:8080', '10.104.254.127:9000','owdev-apigateway.openwhisk.svc.cluster.local:9000', '10.104.254.127:8080']
+     
+    - job_name: 'owdev-prometheus-server'
+      static_configs:
+      - targets: ['owdev-prometheus-server.openwhisk.svc.cluster.local:9090']
+
+    - job_name: 'owdev-scheduler'
+      static_configs:
+      - targets: ['owdev-scheduler.openwhisk.svc.cluster.local:8080','owdev-scheduler.openwhisk.svc.cluster.local:13001','owdev-scheduler.openwhisk.svc.cluster.local:25520']
+
+    - job_name: 'owdev-user-events'
+      static_configs:
+      - targets: ['owdev-user-events.openwhisk.svc.cluster.local:9095']
+
+    - job_name: 'owdev-nginx-gateway'
+      static_configs:
+      - targets: ['192.168.80.134:30888']
+
+    - job_name: 'owdev-nginx-gateway31001'
+      scheme: https
+      tls_config:
+        insecure_skip_verify: true
+      static_configs:
+      - targets: [ '192.168.80.134:31001']
+     
