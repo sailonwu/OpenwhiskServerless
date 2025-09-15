@@ -1,0 +1,52 @@
+whisk:
+  ingress:
+    type: NodePort
+    apiHostName: 192.168.80.145
+    apiHostPort: 31001
+  limits:
+    actions:
+      time:
+        min: "100ms"
+        max: "5m"
+        std: "2m"
+      memory:
+        min: "128m"
+        max: "512m"
+        std: "256m"
+      concurrency:
+        min: 1
+        max: 1
+        std: 1
+
+nginx:
+  httpsNodePort: 31001
+
+
+invoker:
+  containerFactory:
+    impl: "kubernetes"
+
+# 节点调度配置
+kubernetes:
+  affinity:
+    enabled: true
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: openwhisk-role
+                operator: In
+                values:
+                  - invoker # 将 invoker pods 调度到 k8s-node1
+          - matchExpressions:
+              - key: openwhisk-role
+                operator: In
+                values:
+                  - controller # 将 controller pods 调度到 k8s-master
+  toleration:
+    enabled: true
+    key: "node-role.kubernetes.io/master"
+    operator: Exists
+    effect: NoSchedule
+    tolerationSeconds: 3600 # Toleration 配置迁移
+

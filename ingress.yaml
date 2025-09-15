@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openwhisk-ingress
+  namespace: openwhisk
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: 192.168.80.145
+    http:
+      paths:
+      - path: /api/v1/web
+        pathType: Prefix
+        backend:
+          service:
+            name: owdev-apigateway
+            port:
+              number: 8080
+

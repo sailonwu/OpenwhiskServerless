@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    meta.helm.sh/release-name: kube-state-metrics
+    meta.helm.sh/release-namespace: default
+    prometheus.io/scrape: "true"
+  creationTimestamp: "2025-02-20T08:28:14Z"
+  labels:
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/instance: kube-state-metrics
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: kube-state-metrics
+    app.kubernetes.io/part-of: kube-state-metrics
+    app.kubernetes.io/version: 2.15.0
+    helm.sh/chart: kube-state-metrics-5.30.0
+  name: kube-state-metrics
+  namespace: default
+  resourceVersion: "1355204"
+  uid: 67b8ef50-a193-43c6-9d2f-2670161265da
+spec:
+  clusterIP: 10.98.242.26
+  clusterIPs:
+  - 10.98.242.26
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app.kubernetes.io/instance: kube-state-metrics
+    app.kubernetes.io/name: kube-state-metrics
+  sessionAffinity: None
+  type: ClusterIP
+

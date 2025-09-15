@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: git-test
+  namespace:  openwhisk
+spec:
+  containers:
+  - name: git-container
+    image: ubuntu:latest  # 你也可以用 `alpine/git` 或 `bitnami/git`
+    command: ["/bin/sh", "-c", "sleep 3600"]  # 让 Pod 持续运行
+    env:
+    - name: HTTP_PROXY
+      value: "http://10.20.198.113:7890"
+    - name: HTTPS_PROXY
+      value: "http://10.20.198.113:7890"
+  restartPolicy: Never
+
