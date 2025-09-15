@@ -577,79 +577,79 @@ k8s-worker-1   Ready    <none>   4h14m   v1.19.3
         NAME                    PROVISIONER      AGE
         nfs-storage (default)   nfs-client       3m38s
         
-创建 PVC
-  # 删除命令空间
-  kubectl delete ns kube-public
-  
-  # 创建命名空间
-  kubectl create ns kube-public
-  
-  # 清理pvc
-  kubectl delete -f test-claim.yaml -n kube-public
-  
-  # 编写yaml
-  cat >test-claim.yaml<<\EOF
-  kind: PersistentVolumeClaim
-  apiVersion: v1
-  metadata:
-    name: test-claim
-  spec:
-    storageClassName: nfs-storage #---需要与上面创建的storageclass的名称一致
-    accessModes:
-      - ReadWriteMany
-    resources:
-      requests:
-        storage: 100Gi
-  EOF
-  
-  #创建PVC
-  kubectl apply -f test-claim.yaml -n kube-public
-  
-  #查看创建的PV和PVC
-  $ kubectl get pvc -n kube-public
-  NAME         STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
-  test-claim   Bound    pvc-593f241f-a75f-459a-af18-a672e5090921   100Gi      RWX            nfs-storage    3s
-  
-  kubectl get pv
-  
-  #然后，我们进入到NFS的export目录，可以看到对应该volume name的目录已经创建出来了。其中volume的名字是namespace，PVC name以及uuid的组合：
-  
-  #注意，出现pvc在pending的原因可能为nfs-client-provisioner pod 出现了问题，删除重建的时候会出现镜像问题
-
-创建测试 Pod
-  # 清理资源
-  kubectl delete -f test-pod.yaml -n kube-public
-  
-  # 编写yaml
-  cat > test-pod.yaml <<\EOF
-  kind: Pod
-  apiVersion: v1
-  metadata:
-    name: test-pod
-  spec:
-    containers:
-    - name: test-pod
-      image: busybox:latest
-      command:
-        - "/bin/sh"
-      args:
-        - "-c"
-        - "touch /mnt/SUCCESS && exit 0 || exit 1"
-      volumeMounts:
-        - name: nfs-pvc
-          mountPath: "/mnt"
-    restartPolicy: "Never"
-    volumes:
-      - name: nfs-pvc
-        persistentVolumeClaim:
-          claimName: test-claim
-  EOF
-  
-  #创建pod
-  kubectl apply -f test-pod.yaml -n kube-public
-  
-  #查看创建的pod
-  kubectl get pod -o wide -n kube-public
+         创建 PVC
+           # 删除命令空间
+           kubectl delete ns kube-public
+           
+           # 创建命名空间
+           kubectl create ns kube-public
+           
+           # 清理pvc
+           kubectl delete -f test-claim.yaml -n kube-public
+           
+           # 编写yaml
+           cat >test-claim.yaml<<\EOF
+           kind: PersistentVolumeClaim
+           apiVersion: v1
+           metadata:
+             name: test-claim
+           spec:
+             storageClassName: nfs-storage #---需要与上面创建的storageclass的名称一致
+             accessModes:
+               - ReadWriteMany
+             resources:
+               requests:
+                 storage: 100Gi
+           EOF
+           
+           #创建PVC
+           kubectl apply -f test-claim.yaml -n kube-public
+           
+           #查看创建的PV和PVC
+           $ kubectl get pvc -n kube-public
+           NAME         STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+           test-claim   Bound    pvc-593f241f-a75f-459a-af18-a672e5090921   100Gi      RWX            nfs-storage    3s
+           
+           kubectl get pv
+           
+           #然后，我们进入到NFS的export目录，可以看到对应该volume name的目录已经创建出来了。其中volume的名字是namespace，PVC name以及uuid的组合：
+           
+           #注意，出现pvc在pending的原因可能为nfs-client-provisioner pod 出现了问题，删除重建的时候会出现镜像问题
+         
+         创建测试 Pod
+           # 清理资源
+           kubectl delete -f test-pod.yaml -n kube-public
+           
+           # 编写yaml
+           cat > test-pod.yaml <<\EOF
+           kind: Pod
+           apiVersion: v1
+           metadata:
+             name: test-pod
+           spec:
+             containers:
+             - name: test-pod
+               image: busybox:latest
+               command:
+                 - "/bin/sh"
+               args:
+                 - "-c"
+                 - "touch /mnt/SUCCESS && exit 0 || exit 1"
+               volumeMounts:
+                 - name: nfs-pvc
+                   mountPath: "/mnt"
+             restartPolicy: "Never"
+             volumes:
+               - name: nfs-pvc
+                 persistentVolumeClaim:
+                   claimName: test-claim
+           EOF
+           
+           #创建pod
+           kubectl apply -f test-pod.yaml -n kube-public
+           
+           #查看创建的pod
+           kubectl get pod -o wide -n kube-public
 
 7. 在 OpenWhisk 上部署 YOLO 以实现图片目标检测
    1> 定制带有 YOLO 的 OpenWhisk Python runtime 容器
@@ -676,53 +676,53 @@ k8s-worker-1   Ready    <none>   4h14m   v1.19.3
         "name": "yoloTest",
         "main": "main",
         "binary": false,
-        "code": "def main(args):\n\timport json\n\tfrom ultralytics import YOLO\n\tsource = args.get('url', None)\n\tmodel = YOLO('/models/yolov8n.pt')\n\tresults = model(source)\n\treturn {'result': str([json.loads(r.to_json()) for r in results])}"
-    }
-}
+           "code": "def main(args):\n\timport json\n\tfrom ultralytics import YOLO\n\tsource = args.get('url', None)\n\tmodel = YOLO('/models/yolov8n.pt')\n\tresults = model(source)\n\treturn {'result': str([json.loads(r.to_json()) for r in results])}"
+       }
+   }
 
-def main(args):
-    import json
-
-    from ultralytics import YOLO
-
-    source = args.get("url", None)
-    model = YOLO("/models/yolov8n.pt")
-    results = model(source)
-    return {"result": str([json.loads(r.to_json()) for r in results])}
-
-
-    curl -d "@python-data-init-params.json" -H "Content-Type: application/json" http://localhost/init
-
-   3> 将定制镜像推送到 Docker Hub
-  docker tag openwhisk-yolov8n-runtime:1.0.0 <DockerHubUser>/openwhisk-yolov8n-runtime:1.0.0
-
-# Example
-docker tag openwhisk-yolov8n-runtime:1.0.0 liuzhaoze/openwhisk-yolov8n-runtime:1.0.0
-docker push <DockerHubUser>/openwhisk-yolov8n-runtime:1.0.0
-
-# Example
-docker push liuzhaoze/openwhisk-yolov8n-runtime:1.0.0
-
-  4> 在 OpenWhisk 上配置定制 Python runtime 容器
-  cp runtimes.json runtimes.json.bak
-  cp runtimes-minimal-travis.json runtimes-minimal-travis.json.bak
-
-测试
-def main(args):
-    import json
-
-    from ultralytics import YOLO
-
-    source = args.get("url", None)
-    model = YOLO("/models/yolov8n.pt")
-    results = model(source)
-    return {"result": str([json.loads(r.to_json()) for r in results])}
-  
-  zip -j -r yoloTest.zip yoloTest/
-
-  sudo wsk -i action create yoloTest yoloTest.zip --kind python:3
-  sudo wsk -i action invoke --result yoloTest --param url "https://ultralytics.com/images/bus.jpg"
-
-   
-
-   
+      def main(args):
+          import json
+      
+          from ultralytics import YOLO
+      
+          source = args.get("url", None)
+          model = YOLO("/models/yolov8n.pt")
+          results = model(source)
+          return {"result": str([json.loads(r.to_json()) for r in results])}
+      
+      
+          curl -d "@python-data-init-params.json" -H "Content-Type: application/json" http://localhost/init
+      
+         3> 将定制镜像推送到 Docker Hub
+        docker tag openwhisk-yolov8n-runtime:1.0.0 <DockerHubUser>/openwhisk-yolov8n-runtime:1.0.0
+      
+      # Example
+      docker tag openwhisk-yolov8n-runtime:1.0.0 liuzhaoze/openwhisk-yolov8n-runtime:1.0.0
+      docker push <DockerHubUser>/openwhisk-yolov8n-runtime:1.0.0
+      
+      # Example
+      docker push liuzhaoze/openwhisk-yolov8n-runtime:1.0.0
+      
+        4> 在 OpenWhisk 上配置定制 Python runtime 容器
+        cp runtimes.json runtimes.json.bak
+        cp runtimes-minimal-travis.json runtimes-minimal-travis.json.bak
+      
+      测试
+      def main(args):
+          import json
+      
+          from ultralytics import YOLO
+      
+          source = args.get("url", None)
+          model = YOLO("/models/yolov8n.pt")
+          results = model(source)
+          return {"result": str([json.loads(r.to_json()) for r in results])}
+        
+        zip -j -r yoloTest.zip yoloTest/
+      
+        sudo wsk -i action create yoloTest yoloTest.zip --kind python:3
+        sudo wsk -i action invoke --result yoloTest --param url "https://ultralytics.com/images/bus.jpg"
+      
+         
+      
+         
